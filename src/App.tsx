@@ -34,13 +34,6 @@ type WorkspaceView = "overview" | "start" | "wizard" | "map" | "summary";
 
 const LEVEL_OPTIONS: JobLevel[] = ["big", "core", "small", "sub"];
 const VIEW_OPTIONS: WorkspaceView[] = ["overview", "start", "wizard", "map", "summary"];
-const FIELD_TO_JOB_PATCH: Partial<Record<string, keyof JobFields>> = {
-  "job-outcome": "expectedOutcome",
-  "job-criteria": "criteria",
-  "job-situation": "context",
-  "job-motivation": "higherLevelOutcome",
-  "job-solution-detail": "value",
-};
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -109,6 +102,21 @@ function listToText(values?: string[]) {
 
 function withFallback(value: string | undefined, fallback: string) {
   return value?.trim() ? value.trim() : fallback;
+}
+
+function getJobSolutionLabel(session: InterviewSession, job?: JobNode) {
+  return withFallback(job?.fields.solution || session.hypothesisSolution, "решение пока не указано");
+}
+
+function updateJobInSession(
+  session: InterviewSession,
+  jobId: string,
+  patch: Partial<JobFields>,
+  patchRoot?: Partial<JobNode>,
+) {
+  return session.jobs.map((job) =>
+    job.id === jobId ? { ...updateJobFields(job, patch), ...patchRoot } : job,
+  );
 }
 
 function buildScriptLines(stepId: string, session: InterviewSession, selectedJob?: JobNode) {
@@ -535,26 +543,37 @@ function getResearchRepositoryMetrics(sessions: InterviewSession[]) {
 
 function applySessionStepNotes(session: InterviewSession, stepId: string, value: string): InterviewSession {
   const selectedJob = session.jobs.find((job) => job.id === session.selectedJobId);
-  const mappedField = FIELD_TO_JOB_PATCH[stepId];
   let jobs = session.jobs;
   let links = session.links;
   let qualification = session.qualification;
 
   if (stepId === "qualification") {
     qualification = { ...qualification, notes: value };
-  } else if (mappedField && selectedJob) {
-    jobs = session.jobs.map((job) => (job.id === selectedJob.id ? updateJobFields(job, { [mappedField]: value }) : job));
+  } else if (stepId === "job-outcome" && selectedJob) {
+    jobs = updateJobInSession(session, selectedJob.id, { expectedOutcome: value }, { title: value || selectedJob.title });
+  } else if (stepId === "job-criteria" && selectedJob) {
+    jobs = updateJobInSession(session, selectedJob.id, { criteria: value });
+  } else if (stepId === "job-situation" && selectedJob) {
+    const parts = value.split("\n\n");
+    jobs = updateJobInSession(session, selectedJob.id, {
+      context: parts[0]?.trim() || value.trim(),
+      trigger: parts[1]?.trim() || selectedJob.fields.trigger,
+      activatingKnowledge: parts[2]?.trim() || selectedJob.fields.activatingKnowledge,
+    });
+  } else if (stepId === "job-motivation" && selectedJob) {
+    const parts = value.split("\n\n");
+    jobs = updateJobInSession(session, selectedJob.id, {
+      higherLevelOutcome: parts[0]?.trim() || value.trim(),
+      positiveEmotion: parts[1]?.trim() || selectedJob.fields.positiveEmotion,
+      negativeEmotion: parts[2]?.trim() || selectedJob.fields.negativeEmotion,
+    });
   } else if (stepId === "job-economics" && selectedJob) {
     const [frequency = "", importanceRaw = "", satisfactionRaw = ""] = value.split(",").map((part) => part.trim());
-    jobs = session.jobs.map((job) =>
-      job.id === selectedJob.id
-        ? updateJobFields(job, {
-            frequency,
-            importanceScore: Number.parseInt(importanceRaw, 10) || undefined,
-            satisfactionScore: Number.parseInt(satisfactionRaw, 10) || undefined,
-          })
-        : job,
-    );
+    jobs = updateJobInSession(session, selectedJob.id, {
+      frequency,
+      importanceScore: Number.parseInt(importanceRaw, 10) || undefined,
+      satisfactionScore: Number.parseInt(satisfactionRaw, 10) || undefined,
+    });
   } else if (stepId === "previous-next-jobs" && selectedJob) {
     const items = parseList(value).slice(0, 2);
     const createdJobs: JobNode[] = [];
@@ -592,18 +611,14 @@ function applySessionStepNotes(session: InterviewSession, stepId: string, value:
     jobs = [...session.jobs, ...createdJobs];
   } else if (stepId === "job-solution-detail" && selectedJob) {
     const parts = value.split("\n");
-    jobs = session.jobs.map((job) =>
-      job.id === selectedJob.id
-        ? updateJobFields(job, {
-            value: parts[0] ?? "",
-            ahaMoment: parts[1] ?? "",
-            price: parts[2] ?? "",
-            problems: parseList(parts[3] ?? ""),
-            barriers: parseList(parts[4] ?? ""),
-            alternatives: parseList(parts[5] ?? ""),
-          })
-        : job,
-    );
+    jobs = updateJobInSession(session, selectedJob.id, {
+      value: parts[0] ?? "",
+      ahaMoment: parts[1] ?? "",
+      price: parts[2] ?? "",
+      problems: parseList(parts[3] ?? ""),
+      barriers: parseList(parts[4] ?? ""),
+      alternatives: parseList(parts[5] ?? ""),
+    });
   }
 
   return {
@@ -625,6 +640,166 @@ function JobFlowCard({ job }: { job: JobNode }) {
       <strong>{job.title}</strong>
       <p>{job.fields.expectedOutcome || "Добавьте формулировку работы"}</p>
     </div>
+  );
+}
+
+function BoardArtifactsPanel({
+  session,
+  job,
+  onChange,
+}: {
+  session: InterviewSession;
+  job?: JobNode;
+  onChange?: (updater: (session: InterviewSession) => InterviewSession) => void;
+}) {
+  if (!job) {
+    return null;
+  }
+
+  const solutionLabel = getJobSolutionLabel(session, job);
+  const editable = Boolean(onChange);
+  const updateBoardJob = (patch: Partial<JobFields>, patchRoot?: Partial<JobNode>) => {
+    if (!onChange) return;
+    onChange((current) => ({
+      ...current,
+      jobs: updateJobInSession(current, job.id, patch, patchRoot),
+    }));
+  };
+
+  const updateSessionSolution = (value: string) => {
+    if (!onChange) return;
+    onChange((current) => ({
+      ...current,
+      hypothesisSolution: value,
+      jobs: updateJobInSession(current, job.id, { solution: value }),
+    }));
+  };
+
+  return (
+    <section className="panel">
+      <div className="panel__header">
+        <div>
+          <p className="eyebrow">Board Artifacts</p>
+          <h3>Карточки доски</h3>
+        </div>
+        <span>{getLevelLabel(job.level)}</span>
+      </div>
+      <div className="board-grid">
+        <article className="board-card board-card--work">
+          <div className="board-card__top">
+            <strong>Работа</strong>
+            <span className="level-pill">{getLevelLabel(job.level)}</span>
+          </div>
+          {editable ? (
+            <div className="board-card__content">
+              <label>
+                Короткое название
+                <input value={job.title} onChange={(event) => updateBoardJob({}, { title: event.target.value })} />
+              </label>
+              <label>
+                Хочу получить
+                <textarea rows={3} value={job.fields.expectedOutcome || ""} onChange={(event) => updateBoardJob({ expectedOutcome: event.target.value })} />
+              </label>
+              <label>
+                Критерии успеха
+                <textarea rows={3} value={job.fields.criteria || ""} onChange={(event) => updateBoardJob({ criteria: event.target.value })} />
+              </label>
+              <label>
+                Когда / контекст
+                <textarea rows={3} value={job.fields.context || ""} onChange={(event) => updateBoardJob({ context: event.target.value })} />
+              </label>
+              <label>
+                Триггер
+                <textarea rows={2} value={job.fields.trigger || ""} onChange={(event) => updateBoardJob({ trigger: event.target.value })} />
+              </label>
+              <label>
+                Чтобы что / big job
+                <textarea rows={3} value={job.fields.higherLevelOutcome || ""} onChange={(event) => updateBoardJob({ higherLevelOutcome: event.target.value })} />
+              </label>
+            </div>
+          ) : (
+            <div className="board-card__content">
+              <p><strong>{job.fields.expectedOutcome || job.title || "Не сформулировано"}</strong></p>
+              <p>{job.fields.criteria || "Критерии пока не описаны."}</p>
+              <p>{job.fields.context || "Контекст пока не описан."}</p>
+              <p>{job.fields.trigger || "Триггер пока не описан."}</p>
+              <p>{job.fields.higherLevelOutcome || "big job пока не выделен."}</p>
+            </div>
+          )}
+        </article>
+
+        <article className="board-card board-card--solution">
+          <div className="board-card__top">
+            <strong>Решение</strong>
+            <span className="branch-pill">{getModeLabel(job.branchType)}</span>
+          </div>
+          {editable ? (
+            <div className="board-card__content">
+              <label>
+                Название решения
+                <input value={solutionLabel === "решение пока не указано" ? "" : solutionLabel} onChange={(event) => updateSessionSolution(event.target.value)} />
+              </label>
+              <label>
+                Удовлетворённость 1-10
+                <input type="number" min="1" max="10" value={job.fields.satisfactionScore || ""} onChange={(event) => updateBoardJob({ satisfactionScore: Number(event.target.value) || undefined })} />
+              </label>
+              <label>
+                Ценность
+                <textarea rows={3} value={job.fields.value || ""} onChange={(event) => updateBoardJob({ value: event.target.value })} />
+              </label>
+              <label>
+                Aha-moment
+                <textarea rows={3} value={job.fields.ahaMoment || ""} onChange={(event) => updateBoardJob({ ahaMoment: event.target.value })} />
+              </label>
+              <label>
+                Цена / fit цены и ценности
+                <div className="board-inline-fields">
+                  <input value={job.fields.price || ""} onChange={(event) => updateBoardJob({ price: event.target.value })} />
+                  <input type="number" min="1" max="10" value={job.fields.priceValueFitScore || ""} onChange={(event) => updateBoardJob({ priceValueFitScore: Number(event.target.value) || undefined })} />
+                </div>
+              </label>
+            </div>
+          ) : (
+            <div className="board-card__content">
+              <p><strong>{solutionLabel}</strong></p>
+              <p>{job.fields.satisfactionScore ? `Удовлетворённость ${job.fields.satisfactionScore}/10` : "Оценка удовлетворённости пока не зафиксирована."}</p>
+              <p>{job.fields.value || "Ценность пока не зафиксирована."}</p>
+              <p>{job.fields.ahaMoment || "Aha-moment пока не зафиксирован."}</p>
+              <p>{job.fields.price || "Цена пока не указана."}</p>
+            </div>
+          )}
+        </article>
+
+        <article className="board-card board-card--problem">
+          <div className="board-card__top">
+            <strong>Проблемы</strong>
+            <span>{(job.fields.problems?.length ?? 0) + (job.fields.barriers?.length ?? 0) + (job.fields.alternatives?.length ?? 0)}</span>
+          </div>
+          {editable ? (
+            <div className="board-card__content">
+              <label>
+                Проблемы
+                <textarea rows={4} value={listToText(job.fields.problems)} onChange={(event) => updateBoardJob({ problems: parseList(event.target.value) })} />
+              </label>
+              <label>
+                Барьеры
+                <textarea rows={3} value={listToText(job.fields.barriers)} onChange={(event) => updateBoardJob({ barriers: parseList(event.target.value) })} />
+              </label>
+              <label>
+                Альтернативы
+                <textarea rows={3} value={listToText(job.fields.alternatives)} onChange={(event) => updateBoardJob({ alternatives: parseList(event.target.value) })} />
+              </label>
+            </div>
+          ) : (
+            <div className="board-card__content">
+              <p>{(job.fields.problems ?? []).length ? (job.fields.problems ?? []).join(", ") : "Проблемы пока не зафиксированы."}</p>
+              <p>{(job.fields.barriers ?? []).length ? (job.fields.barriers ?? []).join(", ") : "Барьеры пока не зафиксированы."}</p>
+              <p>{(job.fields.alternatives ?? []).length ? (job.fields.alternatives ?? []).join(", ") : "Альтернативы пока не зафиксированы."}</p>
+            </div>
+          )}
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -665,6 +840,8 @@ function StartView({
   advancedMode: boolean;
   onToggleAdvancedMode: () => void;
 }) {
+  const focusJob = getCoreJob(session);
+
   return (
     <div className="stack">
       <section className="hero-card">
@@ -674,6 +851,20 @@ function StartView({
           На этом экране нужно принять только три решения: как назвать интервью, что именно вы
           исследуете и какой тип работы изучаете.
         </p>
+        <div className="simple-steps">
+          <div className="simple-step">
+            <strong>1. Выберите тип интервью</strong>
+            <p>Частотная работа или последовательная работа.</p>
+          </div>
+          <div className="simple-step">
+            <strong>2. Заполните гипотезу</strong>
+            <p>Укажите работу, решение или оба ориентира сразу.</p>
+          </div>
+          <div className="simple-step">
+            <strong>3. Идите по шагам</strong>
+            <p>Дальше wizard поведёт по сценарию, а карточки доски будут собираться рядом.</p>
+          </div>
+        </div>
       </section>
       <section className="panel">
         <div className="mode-cards">
@@ -773,7 +964,7 @@ function StartView({
         </div>
         <div className="action-row">
           <button className="button button--primary" onClick={onGoToWizard}>
-            Начать интервью
+            Перейти к интервью по шагам
           </button>
           <button className="button" onClick={onToggleAdvancedMode}>
             {advancedMode ? "Расширенный режим включён" : "Включить расширенный режим"}
@@ -784,6 +975,7 @@ function StartView({
           {advancedMode ? " Сейчас открыт расширенный режим с ручным управлением структурой работ." : " Сейчас открыт базовый режим: сначала интервью, потом структура."}
         </p>
       </section>
+      <BoardArtifactsPanel session={session} job={focusJob} onChange={onChange} />
     </div>
   );
 }
@@ -845,6 +1037,9 @@ function WizardView({
             {currentIndex + 1}/{session.steps.length}
           </span>
         </div>
+        <div className="helper-banner">
+          <strong>Что делать сейчас:</strong> задайте вопрос из блока ниже, запишите ответ в заметки, затем проверьте как обновились карточки доски.
+        </div>
         <div className="focus-card">
           <p className="eyebrow">Главная задача шага</p>
           <h4>{stepTemplate.goal}</h4>
@@ -876,7 +1071,7 @@ function WizardView({
           <p className="muted">Сначала задайте главный вопрос, потом коротко зафиксируйте ответ ниже.</p>
         ) : null}
         <label>
-          {stepTemplate.fieldLabel}
+          Сырые заметки интервью по шагу
           <textarea
             rows={6}
             placeholder={stepTemplate.placeholder}
@@ -886,6 +1081,18 @@ function WizardView({
             }
           />
         </label>
+        <BoardArtifactsPanel session={session} job={selectedJob} onChange={onChange} />
+        <details className="details-card">
+          <summary>Показать структурированный ввод по шагу</summary>
+          <div className="details-card__body">
+            <StepStructuredEditor
+              session={session}
+              stepId={activeStep.id}
+              selectedJob={selectedJob}
+              onChange={onChange}
+            />
+          </div>
+        </details>
         {stepTemplate.exampleAnswer ? (
           <div className="example-answer">
             <p className="example-answer__label">Пример хорошей фиксации ответа</p>
@@ -935,17 +1142,6 @@ function WizardView({
         </details>
         {advancedMode ? (
           <>
-            <details className="details-card">
-              <summary>Показать структурированные поля</summary>
-              <div className="details-card__body">
-                <StepStructuredEditor
-                  session={session}
-                  stepId={activeStep.id}
-                  selectedJob={selectedJob}
-                  onChange={onChange}
-                />
-              </div>
-            </details>
             <details className="details-card">
               <summary>Показать действия со структурой работ</summary>
               <div className="details-card__body quick-actions">
@@ -1299,6 +1495,16 @@ function StepStructuredEditor({
             onChange={(event) => updateSelectedJobFields({ expectedOutcome: event.target.value })}
           />
         </label>
+        <label className="span-2">
+          Решение
+          <input
+            value={selectedJob.fields.solution || session.hypothesisSolution || ""}
+            onChange={(event) => {
+              updateSelectedJobFields({ solution: event.target.value });
+              onChange((current) => ({ ...current, hypothesisSolution: event.target.value }));
+            }}
+          />
+        </label>
       </div>
     );
   }
@@ -1430,6 +1636,14 @@ function StepStructuredEditor({
           Проблемы
           <textarea rows={4} value={listToText(selectedJob.fields.problems)} onChange={(event) => updateSelectedJobFields({ problems: parseList(event.target.value) })} />
         </label>
+        <label>
+          Барьеры
+          <textarea rows={3} value={listToText(selectedJob.fields.barriers)} onChange={(event) => updateSelectedJobFields({ barriers: parseList(event.target.value) })} />
+        </label>
+        <label>
+          Альтернативы
+          <textarea rows={3} value={listToText(selectedJob.fields.alternatives)} onChange={(event) => updateSelectedJobFields({ alternatives: parseList(event.target.value) })} />
+        </label>
       </div>
     );
   }
@@ -1451,6 +1665,11 @@ function MapView({
 
   return (
     <div className="stack map-view">
+      <BoardArtifactsPanel
+        session={session}
+        job={session.jobs.find((job) => job.id === session.selectedJobId) || getCoreJob(session)}
+        onChange={onChange}
+      />
       <section className="panel map-panel">
         <div className="panel__header">
           <div>
@@ -1808,6 +2027,7 @@ function SummaryView({ session, allSessions }: { session: InterviewSession; allS
           </article>
         </div>
       </section>
+      <BoardArtifactsPanel session={session} job={coreJob} />
       <section className="panel">
         <div className="panel__header">
           <h3>Структура работы</h3>
@@ -2041,6 +2261,18 @@ function AppShell() {
     });
   };
 
+  const clearAllSessions = () => {
+    if (sessions.length === 0) return;
+    const confirmed = window.confirm(
+      "Удалить все сессии? Это сотрёт все интервью и карточки без возможности отмены.",
+    );
+    if (!confirmed) return;
+    setSessions([]);
+    setActiveSessionId(undefined);
+    setView("overview");
+    setIoMessage("Все сессии удалены.");
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -2050,6 +2282,16 @@ function AppShell() {
           <p>
             Мастер ведет интервьюера по шагам, а карта работ параллельно собирается в редактируемый граф.
           </p>
+          <div className="simple-steps simple-steps--compact">
+            <div className="simple-step">
+              <strong>С чего начать</strong>
+              <p>Создайте новую сессию и откройте вкладку подготовки.</p>
+            </div>
+            <div className="simple-step">
+              <strong>Что дальше</strong>
+              <p>Идите по шагам интервью и следите за карточками работы, решения и проблем.</p>
+            </div>
+          </div>
           <div className="action-row">
             <button className="button button--primary" onClick={() => createNewSession("frequent")}>
               Новая сессия: частотная работа
@@ -2069,6 +2311,9 @@ function AppShell() {
               Импорт JSON
               <input type="file" accept="application/json,.json" onChange={handleImportFile} />
             </label>
+            <button className="button button--danger" onClick={clearAllSessions} disabled={sessions.length === 0}>
+              Очистить все сессии
+            </button>
           </div>
           {ioMessage ? <p className="muted">{ioMessage}</p> : null}
         </div>
@@ -2079,7 +2324,7 @@ function AppShell() {
             <span>{sessions.length}</span>
           </div>
           <div className="session-list">
-            {sessions.length === 0 ? <p className="muted">Создайте первую сессию справа сверху.</p> : null}
+            {sessions.length === 0 ? <p className="muted">Пока пусто. Начните с кнопки «Новая сессия» выше.</p> : null}
             {sessions.map((session) => {
               const summary = summarizeSession(session);
               return (
