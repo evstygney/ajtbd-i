@@ -63,26 +63,26 @@ function getModeDescription(mode: InterviewMode) {
 function getLevelLabel(level: JobLevel) {
   switch (level) {
     case "big":
-      return "Работа уровнем выше";
+      return "big job";
     case "core":
-      return "Главная работа";
+      return "core job";
     case "small":
-      return "Подзадача";
+      return "small job";
     case "sub":
-      return "Детальный шаг";
+      return "sub job";
   }
 }
 
 function getLevelHint(level: JobLevel) {
   switch (level) {
     case "big":
-      return "Зачем вообще нужен текущий результат";
+      return "Работа уровнем выше: зачем вообще нужен текущий результат";
     case "core":
-      return "Главная формулировка работы, которую сейчас изучаем";
+      return "Главная работа, которую сейчас изучаем";
     case "small":
-      return "Часть главной работы";
+      return "Работа ниже уровнем, часть core job";
     case "sub":
-      return "Совсем конкретный шаг или действие";
+      return "Совсем конкретный шаг внутри small job";
   }
 }
 
@@ -967,10 +967,10 @@ function WizardView({
                   onClick={() =>
                     onChange((current) => {
                       const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
-                      const newJob = createJob({
-                        title: "Новая работа",
-                        level: baseJob?.level ?? "core",
-                        mode: current.mode,
+                const newJob = createJob({
+                  title: "Новая работа",
+                  level: baseJob?.level ?? "core",
+                  mode: current.mode,
                       });
                       newJob.position = {
                         x: (baseJob?.position?.x ?? 120) + 260,
@@ -986,13 +986,13 @@ function WizardView({
                   className="button"
                   onClick={() =>
                     onChange((current) => {
-                      const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
-                      if (!baseJob) return current;
-                      const newJob = createJob({
-                        title: `Выше: ${baseJob.title}`,
-                        level: prevLevel(baseJob.level),
-                        mode: current.mode,
-                      });
+                const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
+                if (!baseJob) return current;
+                const newJob = createJob({
+                  title: "Новая работа",
+                  level: prevLevel(baseJob.level),
+                  mode: current.mode,
+                });
                       newJob.position = {
                         x: baseJob.position?.x ?? 120,
                         y: (baseJob.position?.y ?? 120) - 220,
@@ -1013,13 +1013,13 @@ function WizardView({
                   className="button"
                   onClick={() =>
                     onChange((current) => {
-                      const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
-                      if (!baseJob) return current;
-                      const child = createJob({
-                        title: `Ниже: ${baseJob.title}`,
-                        level: nextLevel(baseJob.level),
-                        mode: current.mode,
-                        parentId: baseJob.id,
+                const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
+                if (!baseJob) return current;
+                const child = createJob({
+                  title: "Новая работа",
+                  level: nextLevel(baseJob.level),
+                  mode: current.mode,
+                  parentId: baseJob.id,
                       });
                       child.position = {
                         x: baseJob.position?.x ?? 120,

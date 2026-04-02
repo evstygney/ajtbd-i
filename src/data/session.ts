@@ -50,7 +50,7 @@ export function createSession(params?: {
     params?.hypothesisJob ||
     params?.hypothesisSolution ||
     "Новое AJTBD интервью";
-  const initialJobTitle = params?.hypothesisJob || "Первая core job";
+  const initialJobTitle = params?.hypothesisJob || "Новая работа";
   const initialJob = createInitialJob(mode, initialJobTitle);
 
   return {
