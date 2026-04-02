@@ -74,10 +74,14 @@ a {
 
 .workspace__content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   padding: 0 28px 28px;
   min-height: 0;
+}
+
+.workspace__content--with-context {
+  grid-template-columns: minmax(0, 1fr) 360px;
 }
 
 .content-panel,
@@ -148,6 +152,13 @@ a {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .button,
@@ -298,6 +309,110 @@ a {
   margin: 0;
 }
 
+.mode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mode-card {
+  text-align: left;
+  border: 1px solid rgba(31, 41, 55, 0.1);
+  border-radius: 20px;
+  background: #fffdf8;
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.mode-card strong {
+  font-size: 1rem;
+}
+
+.mode-card span {
+  color: #64748b;
+}
+
+.mode-card--active {
+  border-color: rgba(201, 108, 43, 0.55);
+  box-shadow: 0 12px 24px rgba(201, 108, 43, 0.12);
+  background: #fff7eb;
+}
+
+.focus-card {
+  background: linear-gradient(135deg, #fff8ee, #fffdf9);
+  border: 1px solid rgba(201, 108, 43, 0.18);
+  border-radius: 22px;
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.focus-card h4,
+.focus-card p {
+  margin: 0;
+}
+
+.focus-card__label {
+  color: #8d4b20;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.script-line {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.details-card {
+  border: 1px solid rgba(31, 41, 55, 0.08);
+  border-radius: 18px;
+  background: #fffdf8;
+  padding: 0;
+}
+
+.details-card summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  font-weight: 600;
+}
+
+.details-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.details-card__body {
+  padding: 0 16px 16px;
+}
+
+.example-answer {
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  padding: 14px 16px;
+}
+
+.example-answer p {
+  margin: 0;
+}
+
+.example-answer__label,
+.field-hint {
+  display: block;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.example-answer__label {
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
 .summary-tile {
   background: rgba(255, 251, 245, 0.92);
   border: 1px solid rgba(31, 41, 55, 0.08);
@@ -427,6 +542,10 @@ textarea {
   .wizard-layout,
   .form-grid,
   .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-cards {
     grid-template-columns: 1fr;
   }
 

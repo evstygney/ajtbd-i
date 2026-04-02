@@ -10,6 +10,7 @@ export interface StepTemplate {
   hints: string[];
   fieldLabel: string;
   placeholder: string;
+  exampleAnswer?: string;
   supportsJobSelection?: boolean;
   optional?: boolean;
 }
@@ -31,6 +32,8 @@ const commonDeepDive: StepTemplate[] = [
     ],
     fieldLabel: "Описание ожидаемого результата",
     placeholder: "Например: быстро подобрать квартиру, которая подходит семье по району и бюджету",
+    exampleAnswer:
+      "Хочу быстро подобрать квартиру, которая подходит семье по району, бюджету и не потребует долгих дополнительных согласований.",
     supportsJobSelection: true,
   },
   {
@@ -49,6 +52,8 @@ const commonDeepDive: StepTemplate[] = [
     ],
     fieldLabel: "Критерии результата",
     placeholder: "Например: без навязанных услуг, за 2 дня, в удобном районе, с понятным следующим шагом",
+    exampleAnswer:
+      "Для меня важно, чтобы результат был получен без лишних звонков, в понятные сроки и чтобы я сразу понимал следующий шаг.",
     supportsJobSelection: true,
   },
   {
@@ -68,6 +73,8 @@ const commonDeepDive: StepTemplate[] = [
     ],
     fieldLabel: "Контекст, триггер и активирующее знание",
     placeholder: "Опишите ситуацию, событие и новое знание, которое запустило работу",
+    exampleAnswer:
+      "Обычно это возникает, когда мы уже понимаем, что текущий вариант не подходит, и после разговора с близкими становится понятно, что откладывать больше нельзя.",
     supportsJobSelection: true,
   },
   {
@@ -87,6 +94,8 @@ const commonDeepDive: StepTemplate[] = [
     ],
     fieldLabel: "Мотивация и эмоции",
     placeholder: "Опишите работу уровнем выше, позитивные и негативные эмоции",
+    exampleAnswer:
+      "Мне это нужно, чтобы чувствовать спокойствие и уверенность, что семья в безопасности. Пока результата нет, я чувствую тревогу и раздражение.",
     supportsJobSelection: true,
   },
   {
@@ -106,6 +115,8 @@ const commonDeepDive: StepTemplate[] = [
     ],
     fieldLabel: "Частотность, важность и удовлетворенность",
     placeholder: "Например: 3 раза в месяц, важность 9/10, удовлетворенность 6/10",
+    exampleAnswer:
+      "Такая задача возникает примерно 2-3 раза в месяц, важность для меня на уровне 8 из 10, а текущее решение я бы оценил на 6 из 10.",
     supportsJobSelection: true,
   },
   {
@@ -126,6 +137,8 @@ const commonDeepDive: StepTemplate[] = [
     ],
     fieldLabel: "Ценность, цена и проблемы",
     placeholder: "Кратко зафиксируйте ценность, aha-moment, барьеры, альтернативы и проблемы",
+    exampleAnswer:
+      "Ценность решения в экономии времени и снижении стресса. Реальную пользу я понял после первого удачного использования. До покупки меня останавливала цена и сомнение, что справлюсь без него.",
     supportsJobSelection: true,
   },
 ];
@@ -159,6 +172,8 @@ export function getStepTemplates(mode: InterviewMode): StepTemplate[] {
       ],
       fieldLabel: "Заметки по старту",
       placeholder: "Опишите цель интервью, исходную гипотезу и важные договоренности",
+      exampleAnswer:
+        "Изучаем, на какую работу люди нанимают сервис доставки продуктов. Интервью длится около 60 минут, ведем заметки и просим респондента говорить про реальный опыт.",
     },
     {
       id: "qualification",
@@ -177,6 +192,8 @@ export function getStepTemplates(mode: InterviewMode): StepTemplate[] {
       ],
       fieldLabel: "Итог квалификации",
       placeholder: "Сегмент, опыт, прошлые решения, ограничения, важные заметки",
+      exampleAnswer:
+        "Респондент уже 2 года решает эту задачу, пробовал 3 альтернативных решения, чувствителен к цене и предпочитает понятные предсказуемые сценарии.",
     },
     {
       id: "navigation-to-jobs",
@@ -195,6 +212,8 @@ export function getStepTemplates(mode: InterviewMode): StepTemplate[] {
       ],
       fieldLabel: "Результаты навигации",
       placeholder: "Перечислите найденные работы и отметьте 1-2 приоритетные для прокапывания",
+      exampleAnswer:
+        "Нашли 3 работы: быстро закрыть бытовую задачу, снизить стресс, не тратить время на сравнение вариантов. Для прокапывания выбрали первую и вторую.",
     },
     ...commonDeepDive,
     {
@@ -215,6 +234,8 @@ export function getStepTemplates(mode: InterviewMode): StepTemplate[] {
       ],
       fieldLabel: "Предыдущие и следующие работы",
       placeholder: "Опишите предшествующие и последующие работы, которые нужно добавить в граф",
+      exampleAnswer:
+        "До использования решения человек сравнивал варианты вручную, а после переходил к согласованию деталей и проверке результата.",
       supportsJobSelection: true,
     },
     {
@@ -230,6 +251,8 @@ export function getStepTemplates(mode: InterviewMode): StepTemplate[] {
       ],
       fieldLabel: "Работы ниже уровнем",
       placeholder: "Добавьте small/sub jobs, которые декомпозируют выбранную работу",
+      exampleAnswer:
+        "Сначала собрать варианты, затем отфильтровать неподходящие, потом согласовать выбор с другими участниками и только после этого принять решение.",
       supportsJobSelection: true,
     },
     {
@@ -248,6 +271,8 @@ export function getStepTemplates(mode: InterviewMode): StepTemplate[] {
       ],
       fieldLabel: "Заметки по решенческому интервью",
       placeholder: "Кратко опишите возможный switch-сценарий, альтернативы и гипотезы",
+      exampleAnswer:
+        "Респондент раньше решал задачу вручную, потом перешел на сервис после негативного опыта и готов рассматривать другие решения, если те будут дешевле и прозрачнее.",
       optional: true,
       supportsJobSelection: true,
     },
@@ -267,6 +292,8 @@ export function getStepTemplates(mode: InterviewMode): StepTemplate[] {
       ],
       fieldLabel: "Финальные выводы",
       placeholder: "Кратко зафиксируйте главные выводы и что нужно проверить после интервью",
+      exampleAnswer:
+        "Главная работа связана со снижением неопределенности и экономией времени. Самые важные проблемы: долгий выбор, недоверие к качеству и сложный следующий шаг.",
     },
   ];
 }

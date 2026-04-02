@@ -60,6 +60,32 @@ function getModeDescription(mode: InterviewMode) {
     : "Используйте, если работа похожа на проект с шагами: купить квартиру, выбрать авто, пройти релокацию.";
 }
 
+function getLevelLabel(level: JobLevel) {
+  switch (level) {
+    case "big":
+      return "Работа уровнем выше";
+    case "core":
+      return "Главная работа";
+    case "small":
+      return "Подзадача";
+    case "sub":
+      return "Детальный шаг";
+  }
+}
+
+function getLevelHint(level: JobLevel) {
+  switch (level) {
+    case "big":
+      return "Зачем вообще нужен текущий результат";
+    case "core":
+      return "Главная формулировка работы, которую сейчас изучаем";
+    case "small":
+      return "Часть главной работы";
+    case "sub":
+      return "Совсем конкретный шаг или действие";
+  }
+}
+
 function nextLevel(level: JobLevel): JobLevel {
   const index = LEVEL_OPTIONS.indexOf(level);
   return LEVEL_OPTIONS[Math.min(index + 1, LEVEL_OPTIONS.length - 1)];
@@ -337,7 +363,7 @@ function JobFlowCard({ job }: { job: JobNode }) {
   return (
     <div className="flow-card">
       <div className="flow-card__meta">
-        <span className="level-pill">{job.level}</span>
+        <span className="level-pill">{getLevelLabel(job.level)}</span>
         <span className="branch-pill">{getModeLabel(job.branchType)}</span>
       </div>
       <strong>{job.title}</strong>
@@ -374,20 +400,54 @@ function StartView({
   session,
   onChange,
   onGoToWizard,
+  advancedMode,
+  onToggleAdvancedMode,
 }: {
   session: InterviewSession;
   onChange: (updater: (session: InterviewSession) => InterviewSession) => void;
   onGoToWizard: () => void;
+  advancedMode: boolean;
+  onToggleAdvancedMode: () => void;
 }) {
   return (
     <div className="stack">
       <section className="hero-card">
         <p className="eyebrow">Старт интервью</p>
-        <h3>Настройте рамку интервью и стартовые гипотезы</h3>
+        <h3>Сначала задайте рамку разговора, потом переходите к вопросам</h3>
         <p>
-          Здесь интервьюер задает режим, название сессии, гипотезу работы или решения и базовые
-          договоренности перед разговором.
+          На этом экране нужно принять только три решения: как назвать интервью, что именно вы
+          исследуете и какой тип работы изучаете.
         </p>
+      </section>
+      <section className="panel">
+        <div className="mode-cards">
+          <button
+            type="button"
+            className={classNames("mode-card", session.mode === "frequent" && "mode-card--active")}
+            onClick={() =>
+              onChange((current) => ({
+                ...current,
+                mode: "frequent",
+              }))
+            }
+          >
+            <strong>{getModeLabel("frequent")}</strong>
+            <span>{getModeDescription("frequent")}</span>
+          </button>
+          <button
+            type="button"
+            className={classNames("mode-card", session.mode === "sequential" && "mode-card--active")}
+            onClick={() =>
+              onChange((current) => ({
+                ...current,
+                mode: "sequential",
+              }))
+            }
+          >
+            <strong>{getModeLabel("sequential")}</strong>
+            <span>{getModeDescription("sequential")}</span>
+          </button>
+        </div>
       </section>
       <section className="panel">
         <div className="form-grid">
@@ -457,10 +517,16 @@ function StartView({
         </div>
         <div className="action-row">
           <button className="button button--primary" onClick={onGoToWizard}>
-            Перейти к мастеру
+            Начать интервью
+          </button>
+          <button className="button" onClick={onToggleAdvancedMode}>
+            {advancedMode ? "Расширенный режим включён" : "Включить расширенный режим"}
           </button>
         </div>
-        <p className="muted">{getModeDescription(session.mode)}</p>
+        <p className="muted">
+          Подсказка: если сомневаетесь, начните с того режима, где респондент описывает опыт естественнее.
+          {advancedMode ? " Сейчас открыт расширенный режим с ручным управлением структурой работ." : " Сейчас открыт базовый режим: сначала интервью, потом структура."}
+        </p>
       </section>
     </div>
   );
@@ -473,6 +539,7 @@ function WizardView({
   stepTemplate,
   onChange,
   onGoToMap,
+  advancedMode,
 }: {
   session: InterviewSession;
   selectedJob?: JobNode;
@@ -480,11 +547,14 @@ function WizardView({
   stepTemplate: StepTemplate;
   onChange: (updater: (session: InterviewSession) => InterviewSession) => void;
   onGoToMap: () => void;
+  advancedMode: boolean;
 }) {
   const currentIndex = session.steps.findIndex((step) => step.id === activeStep.id);
   const canMoveNext = currentIndex < session.steps.length - 1;
   const canMovePrev = currentIndex > 0;
   const scriptLines = buildScriptLines(activeStep.id, session, selectedJob);
+  const primaryScript = scriptLines[0];
+  const extraScripts = scriptLines.slice(1);
 
   const moveStep = (direction: "next" | "prev") => {
     onChange((current) => {
@@ -517,56 +587,40 @@ function WizardView({
             {currentIndex + 1}/{session.steps.length}
           </span>
         </div>
-        <p>{stepTemplate.goal}</p>
-        <div className="wizard-layout">
-          <div className="wizard-section">
-            <h4>Что говорить</h4>
-            <ul className="clean-list">
-              {scriptLines.map((line) => (
-                <li key={line}>
-                  <strong>“{line}”</strong>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="wizard-section">
-            <h4>Вопросы и ориентиры</h4>
-            <ul className="clean-list">
-              {stepTemplate.prompts.map((prompt) => (
-                <li key={prompt}>{prompt}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="wizard-section wizard-section--full">
-            <h4>Подсказки интервьюеру</h4>
-            <ul className="clean-list">
-              {stepTemplate.hints.map((hint) => (
-                <li key={hint}>{hint}</li>
-              ))}
-            </ul>
-          </div>
+        <div className="focus-card">
+          <p className="eyebrow">Главная задача шага</p>
+          <h4>{stepTemplate.goal}</h4>
+          {primaryScript ? (
+            <>
+              <p className="focus-card__label">Что сказать прямо сейчас</p>
+              <p className="script-line">“{primaryScript}”</p>
+            </>
+          ) : null}
         </div>
         {stepTemplate.supportsJobSelection ? (
           <label>
-            Рабочий узел для шага
+            Текущая работа, про которую идет разговор
             <select
               value={session.selectedJobId || ""}
               onChange={(event) =>
                 onChange((current) => ({ ...current, selectedJobId: event.target.value || undefined }))
               }
             >
-              {session.jobs.map((job) => (
+                  {session.jobs.map((job) => (
                 <option key={job.id} value={job.id}>
-                  {job.level}: {getSuggestedJobTitle(job)}
+                  {getLevelLabel(job.level)}: {getSuggestedJobTitle(job)}
                 </option>
               ))}
             </select>
           </label>
         ) : null}
+        {stepTemplate.supportsJobSelection ? (
+          <p className="muted">Сначала задайте главный вопрос, потом коротко зафиксируйте ответ ниже.</p>
+        ) : null}
         <label>
           {stepTemplate.fieldLabel}
           <textarea
-            rows={8}
+            rows={6}
             placeholder={stepTemplate.placeholder}
             value={activeStep.notes}
             onChange={(event) =>
@@ -574,126 +628,173 @@ function WizardView({
             }
           />
         </label>
-        <StepStructuredEditor
-          session={session}
-          stepId={activeStep.id}
-          selectedJob={selectedJob}
-          onChange={onChange}
-        />
-        <div className="quick-actions">
-          <button
-            className="button"
-            onClick={() =>
-              onChange((current) => ({
-                ...current,
-                steps: current.steps.map((step) =>
-                  step.id === activeStep.id ? { ...step, unclear: !step.unclear } : step,
-                ),
-              }))
-            }
-          >
-            {activeStep.unclear ? "Снять пометку 'неясно'" : "Пометить как неясно"}
-          </button>
-          <button
-            className="button"
-            onClick={() =>
-              onChange((current) => {
-                const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
-                const newJob = createJob({
-                  title: "Новая работа",
-                  level: baseJob?.level ?? "core",
-                  mode: current.mode,
-                });
-                newJob.position = {
-                  x: (baseJob?.position?.x ?? 120) + 260,
-                  y: baseJob?.position?.y ?? 120,
-                };
-                return { ...current, jobs: [...current.jobs, newJob], selectedJobId: newJob.id };
-              })
-            }
-          >
-            Добавить работу
-          </button>
-          <button
-            className="button"
-            onClick={() =>
-              onChange((current) => {
-                const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
-                if (!baseJob) return current;
-                const newJob = createJob({
-                  title: `Выше: ${baseJob.title}`,
-                  level: prevLevel(baseJob.level),
-                  mode: current.mode,
-                });
-                newJob.position = {
-                  x: baseJob.position?.x ?? 120,
-                  y: (baseJob.position?.y ?? 120) - 220,
-                };
-                return {
-                  ...current,
-                  jobs: current.jobs
-                    .map((job) => (job.id === baseJob.id ? { ...job, parentId: newJob.id } : job))
-                    .concat(newJob),
-                  selectedJobId: newJob.id,
-                };
-              })
-            }
-          >
-            Создать работу уровнем выше
-          </button>
-          <button
-            className="button"
-            onClick={() =>
-              onChange((current) => {
-                const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
-                if (!baseJob) return current;
-                const child = createJob({
-                  title: `Ниже: ${baseJob.title}`,
-                  level: nextLevel(baseJob.level),
-                  mode: current.mode,
-                  parentId: baseJob.id,
-                });
-                child.position = {
-                  x: baseJob.position?.x ?? 120,
-                  y: (baseJob.position?.y ?? 120) + 220,
-                };
-                return { ...current, jobs: [...current.jobs, child], selectedJobId: child.id };
-              })
-            }
-          >
-            Создать работу уровнем ниже
-          </button>
-          <button
-            className="button"
-            onClick={() =>
-              onChange((current) => ({
-                ...current,
-                steps: current.steps.map((step) =>
-                  step.id === activeStep.id ? { ...step, status: "skipped" } : step,
-                ),
-              }))
-            }
-          >
-            Пропустить шаг
-          </button>
-        </div>
+        {stepTemplate.exampleAnswer ? (
+          <div className="example-answer">
+            <p className="example-answer__label">Пример хорошей фиксации ответа</p>
+            <p>{stepTemplate.exampleAnswer}</p>
+          </div>
+        ) : null}
+        <details className="details-card">
+          <summary>Показать дополнительные формулировки и уточнения</summary>
+          <div className="details-card__body wizard-layout">
+            {extraScripts.length > 0 ? (
+              <div className="wizard-section">
+                <h4>Дополнительные фразы</h4>
+                <ul className="clean-list">
+                  {extraScripts.map((line) => (
+                    <li key={line}>“{line}”</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <div className="wizard-section">
+              <h4>Вопросы и ориентиры</h4>
+              <ul className="clean-list">
+                {stepTemplate.prompts.map((prompt) => (
+                  <li key={prompt}>{prompt}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="wizard-section wizard-section--full">
+              <h4>Подсказки интервьюеру</h4>
+              <ul className="clean-list">
+                {stepTemplate.hints.map((hint) => (
+                  <li key={hint}>{hint}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </details>
+        {advancedMode ? (
+          <>
+            <details className="details-card">
+              <summary>Показать структурированные поля</summary>
+              <div className="details-card__body">
+                <StepStructuredEditor
+                  session={session}
+                  stepId={activeStep.id}
+                  selectedJob={selectedJob}
+                  onChange={onChange}
+                />
+              </div>
+            </details>
+            <details className="details-card">
+              <summary>Показать действия со структурой работ</summary>
+              <div className="details-card__body quick-actions">
+                <button
+                  className="button"
+                  onClick={() =>
+                    onChange((current) => ({
+                      ...current,
+                      steps: current.steps.map((step) =>
+                        step.id === activeStep.id ? { ...step, unclear: !step.unclear } : step,
+                      ),
+                    }))
+                  }
+                >
+                  {activeStep.unclear ? "Снять пометку 'неясно'" : "Пометить как неясно"}
+                </button>
+                <button
+                  className="button"
+                  onClick={() =>
+                    onChange((current) => {
+                      const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
+                      const newJob = createJob({
+                        title: "Новая работа",
+                        level: baseJob?.level ?? "core",
+                        mode: current.mode,
+                      });
+                      newJob.position = {
+                        x: (baseJob?.position?.x ?? 120) + 260,
+                        y: baseJob?.position?.y ?? 120,
+                      };
+                      return { ...current, jobs: [...current.jobs, newJob], selectedJobId: newJob.id };
+                    })
+                  }
+                >
+                  Добавить работу
+                </button>
+                <button
+                  className="button"
+                  onClick={() =>
+                    onChange((current) => {
+                      const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
+                      if (!baseJob) return current;
+                      const newJob = createJob({
+                        title: `Выше: ${baseJob.title}`,
+                        level: prevLevel(baseJob.level),
+                        mode: current.mode,
+                      });
+                      newJob.position = {
+                        x: baseJob.position?.x ?? 120,
+                        y: (baseJob.position?.y ?? 120) - 220,
+                      };
+                      return {
+                        ...current,
+                        jobs: current.jobs
+                          .map((job) => (job.id === baseJob.id ? { ...job, parentId: newJob.id } : job))
+                          .concat(newJob),
+                        selectedJobId: newJob.id,
+                      };
+                    })
+                  }
+                >
+                  Создать работу уровнем выше
+                </button>
+                <button
+                  className="button"
+                  onClick={() =>
+                    onChange((current) => {
+                      const baseJob = current.jobs.find((job) => job.id === current.selectedJobId);
+                      if (!baseJob) return current;
+                      const child = createJob({
+                        title: `Ниже: ${baseJob.title}`,
+                        level: nextLevel(baseJob.level),
+                        mode: current.mode,
+                        parentId: baseJob.id,
+                      });
+                      child.position = {
+                        x: baseJob.position?.x ?? 120,
+                        y: (baseJob.position?.y ?? 120) + 220,
+                      };
+                      return { ...current, jobs: [...current.jobs, child], selectedJobId: child.id };
+                    })
+                  }
+                >
+                  Создать работу уровнем ниже
+                </button>
+                <button
+                  className="button"
+                  onClick={() =>
+                    onChange((current) => ({
+                      ...current,
+                      steps: current.steps.map((step) =>
+                        step.id === activeStep.id ? { ...step, status: "skipped" } : step,
+                      ),
+                    }))
+                  }
+                >
+                  Пропустить шаг
+                </button>
+              </div>
+            </details>
+          </>
+        ) : null}
         <div className="action-row">
           <button className="button" disabled={!canMovePrev} onClick={() => moveStep("prev")}>
             Назад
           </button>
-          <button className="button" onClick={onGoToMap}>
-            Открыть карту
-          </button>
+          {advancedMode ? <button className="button" onClick={onGoToMap}>Открыть карту</button> : null}
           <button className="button button--primary" disabled={!canMoveNext} onClick={() => moveStep("next")}>
             Следующий шаг
           </button>
         </div>
       </section>
-      {selectedJob ? (
+      {advancedMode && selectedJob ? (
         <section className="panel">
           <div className="panel__header">
             <h3>Контекст выбранной работы</h3>
-            <span>{selectedJob.level}</span>
+            <span>{getLevelLabel(selectedJob.level)}</span>
           </div>
           <p className="muted">{getSuggestedJobTitle(selectedJob)}</p>
           <div className="info-grid">
@@ -761,10 +862,11 @@ function JobInspector({
         >
           {LEVEL_OPTIONS.map((level) => (
             <option key={level} value={level}>
-              {level}
+              {getLevelLabel(level)}
             </option>
           ))}
         </select>
+        <span className="field-hint">{getLevelHint(selectedJob.level)}</span>
       </label>
       <label>
         Родительская работа
@@ -910,16 +1012,17 @@ function StepStructuredEditor({
           Название работы
           <input value={selectedJob.title} onChange={(event) => updateSelectedJobFields({}, { title: event.target.value })} />
         </label>
-        <label>
-          Уровень
-          <select value={selectedJob.level} onChange={(event) => updateSelectedJobFields({}, { level: event.target.value as JobLevel })}>
-            {LEVEL_OPTIONS.map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
-        </label>
+      <label>
+        Уровень
+        <select value={selectedJob.level} onChange={(event) => updateSelectedJobFields({}, { level: event.target.value as JobLevel })}>
+          {LEVEL_OPTIONS.map((level) => (
+            <option key={level} value={level}>
+              {getLevelLabel(level)}
+            </option>
+          ))}
+        </select>
+        <span className="field-hint">{getLevelHint(selectedJob.level)}</span>
+      </label>
         <label className="span-2">
           Ожидаемый результат
           <textarea
@@ -1147,7 +1250,7 @@ function MapView({
               <div>
                 <strong>{job.title}</strong>
                 <p>
-                  {job.level} / {getModeLabel(job.branchType)}
+                  {getLevelLabel(job.level)} / {getModeLabel(job.branchType)}
                 </p>
               </div>
               <div className="action-row">
@@ -1212,7 +1315,7 @@ function SummaryView({ session }: { session: InterviewSession }) {
             <article key={job.id} className="summary-item">
               <div className="summary-item__top">
                 <strong>{job.title}</strong>
-                <span className="level-pill">{job.level}</span>
+                <span className="level-pill">{getLevelLabel(job.level)}</span>
               </div>
               <p>{job.fields.expectedOutcome || "Нет описания ожидаемого результата"}</p>
               <p className="muted">{(job.fields.problems ?? []).join(", ") || "Проблемы не заполнены"}</p>
@@ -1230,6 +1333,8 @@ function AppShell() {
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>(initialSessions[0]?.id);
   const [view, setView] = useState<WorkspaceView>("start");
   const [ioMessage, setIoMessage] = useState<string>("");
+  const [showContextPanel, setShowContextPanel] = useState<boolean>(false);
+  const [advancedMode, setAdvancedMode] = useState<boolean>(false);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId),
@@ -1424,25 +1529,38 @@ function AppShell() {
             <p className="eyebrow">Рабочая зона</p>
             <h2>{activeSession?.title || "Создайте первую AJTBD-сессию"}</h2>
           </div>
-          <div className="tab-row" role="tablist" aria-label="View switcher">
-            {VIEW_OPTIONS.map((option) => (
-              <button
-                key={option}
-                className={classNames("tab", view === option && "tab--active")}
-                onClick={() => setView(option)}
-              >
-                {option === "start" ? "Старт" : option === "wizard" ? "Мастер" : option === "map" ? "Карта" : "Итог"}
+          <div className="header-actions">
+            <div className="tab-row" role="tablist" aria-label="View switcher">
+              {VIEW_OPTIONS.filter((option) => advancedMode || option !== "map").map((option) => (
+                <button
+                  key={option}
+                  className={classNames("tab", view === option && "tab--active")}
+                  onClick={() => setView(option)}
+                >
+                  {option === "start" ? "Подготовка" : option === "wizard" ? "Интервью" : option === "map" ? "Карта" : "Итог"}
+                </button>
+              ))}
+            </div>
+            {activeSession && advancedMode ? (
+              <button className="button" onClick={() => setShowContextPanel((value) => !value)}>
+                {showContextPanel ? "Скрыть контекст" : "Показать контекст"}
               </button>
-            ))}
+            ) : null}
           </div>
         </header>
 
-        <div className="workspace__content">
+        <div className={classNames("workspace__content", showContextPanel && "workspace__content--with-context")}>
           <section className="content-panel">
             {!activeSession ? (
               <EmptyState onCreate={createNewSession} />
             ) : view === "start" ? (
-              <StartView session={activeSession} onChange={updateSession} onGoToWizard={() => setView("wizard")} />
+              <StartView
+                session={activeSession}
+                onChange={updateSession}
+                onGoToWizard={() => setView("wizard")}
+                advancedMode={advancedMode}
+                onToggleAdvancedMode={() => setAdvancedMode((value) => !value)}
+              />
             ) : view === "wizard" && activeStep && stepTemplate ? (
               <WizardView
                 session={activeSession}
@@ -1451,6 +1569,7 @@ function AppShell() {
                 stepTemplate={stepTemplate}
                 onChange={updateSession}
                 onGoToMap={() => setView("map")}
+                advancedMode={advancedMode}
               />
             ) : view === "map" ? (
               <MapView session={activeSession} onChange={updateSession} onDeleteJob={deleteJob} />
@@ -1459,13 +1578,14 @@ function AppShell() {
             )}
           </section>
 
+          {showContextPanel && advancedMode ? (
           <aside className="context-panel">
             {activeSession ? (
               <>
                 <section className="panel">
                   <div className="panel__header">
                     <h2>Текущая работа</h2>
-                    <span>{selectedJob?.level || "none"}</span>
+                    <span>{selectedJob ? getLevelLabel(selectedJob.level) : "none"}</span>
                   </div>
                   {selectedJob ? (
                     <JobInspector
@@ -1498,6 +1618,7 @@ function AppShell() {
               </section>
             )}
           </aside>
+          ) : null}
         </div>
       </main>
     </div>
