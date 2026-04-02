@@ -195,6 +195,82 @@ function summarizeSession(session: InterviewSession) {
   return { coreJobs, problemCount, stepProgress };
 }
 
+function getStepLearnedSummary(stepId: string, session: InterviewSession, selectedJob?: JobNode) {
+  if (stepId === "onboarding") {
+    return session.steps.find((step) => step.id === "onboarding")?.notes || "Пока не зафиксировали стартовую рамку интервью.";
+  }
+
+  if (stepId === "qualification") {
+    const q = session.qualification;
+    const items = [q.segment, q.experienceLevel, q.priorSolutions, q.constraints].filter(Boolean);
+    return items.length > 0 ? items.join(" • ") : "Квалификационный профиль пока не заполнен.";
+  }
+
+  if (!selectedJob) {
+    return "Сначала выберите текущую работу.";
+  }
+
+  const byStep: Record<string, string | undefined> = {
+    "navigation-to-jobs": session.steps.find((step) => step.id === "navigation-to-jobs")?.notes,
+    "job-outcome": selectedJob.fields.expectedOutcome || selectedJob.title,
+    "job-criteria": selectedJob.fields.criteria,
+    "job-situation": [selectedJob.fields.context, selectedJob.fields.trigger, selectedJob.fields.activatingKnowledge]
+      .filter(Boolean)
+      .join(" • "),
+    "job-motivation": [selectedJob.fields.higherLevelOutcome, selectedJob.fields.positiveEmotion, selectedJob.fields.negativeEmotion]
+      .filter(Boolean)
+      .join(" • "),
+    "job-economics": [
+      selectedJob.fields.frequency,
+      selectedJob.fields.importanceScore ? `важность ${selectedJob.fields.importanceScore}/10` : undefined,
+      selectedJob.fields.satisfactionScore ? `удовлетворённость ${selectedJob.fields.satisfactionScore}/10` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" • "),
+    "job-solution-detail": [
+      selectedJob.fields.value,
+      selectedJob.fields.ahaMoment,
+      ...(selectedJob.fields.problems ?? []),
+    ]
+      .filter(Boolean)
+      .join(" • "),
+    "previous-next-jobs": session.steps.find((step) => step.id === "previous-next-jobs")?.notes,
+    "lower-level-jobs": session.steps.find((step) => step.id === "lower-level-jobs")?.notes,
+    "solution-interview": session.steps.find((step) => step.id === "solution-interview")?.notes,
+    summary: session.steps.find((step) => step.id === "summary")?.notes,
+  };
+
+  return byStep[stepId] || "На этом шаге пока нет сохранённого вывода.";
+}
+
+function getStepNextAction(stepId: string, session: InterviewSession, selectedJob?: JobNode) {
+  if (stepId === "onboarding") {
+    return "Проверьте, что понятно: какую задачу исследуем и как объясняем цель разговора респонденту.";
+  }
+  if (stepId === "qualification") {
+    return "Убедитесь, что понятны опыт респондента, прошлые решения и ограничения.";
+  }
+  if (!selectedJob) {
+    return "Выберите работу, чтобы продолжить интервью по существу.";
+  }
+
+  const next: Record<string, string> = {
+    "navigation-to-jobs": "Выберите 1-2 самые важные работы и продолжайте только с ними.",
+    "job-outcome": "Проверьте, что формулировка звучит как результат, а не как функция продукта.",
+    "job-criteria": "Уточните, как респондент понимает, что результат получен хорошо.",
+    "job-situation": "Проверьте, что вы отделили ситуацию, триггер и новое знание друг от друга.",
+    "job-motivation": "Дойдите до работы уровнем выше и эмоциональной ставки.",
+    "job-economics": "Сопоставьте силу работы и качество текущего решения.",
+    "job-solution-detail": "Соберите барьеры, альтернативы и реальные проблемы использования.",
+    "previous-next-jobs": "Добавьте соседние работы, чтобы увидеть цепочку целиком.",
+    "lower-level-jobs": "Разложите текущую работу на шаги только там, где это реально помогает понять проблему.",
+    "solution-interview": "Если история перехода сильная, сохраните её как отдельную гипотезу для следующего исследования.",
+    summary: "Проверьте, что главные выводы привязаны к конкретным работам и проблемам.",
+  };
+
+  return next[stepId] || "Продолжайте по сценарию интервью.";
+}
+
 function updateStepStatuses(steps: StepState[], activeStepId: string): StepState[] {
   let passedActive = false;
   return steps.map((step) => {
@@ -555,6 +631,8 @@ function WizardView({
   const scriptLines = buildScriptLines(activeStep.id, session, selectedJob);
   const primaryScript = scriptLines[0];
   const extraScripts = scriptLines.slice(1);
+  const learnedSummary = getStepLearnedSummary(activeStep.id, session, selectedJob);
+  const nextAction = getStepNextAction(activeStep.id, session, selectedJob);
 
   const moveStep = (direction: "next" | "prev") => {
     onChange((current) => {
@@ -634,6 +712,16 @@ function WizardView({
             <p>{stepTemplate.exampleAnswer}</p>
           </div>
         ) : null}
+        <div className="step-summary">
+          <div className="step-summary__item">
+            <p className="step-summary__label">Что уже поняли</p>
+            <p>{learnedSummary}</p>
+          </div>
+          <div className="step-summary__item">
+            <p className="step-summary__label">Что уточнить дальше</p>
+            <p>{nextAction}</p>
+          </div>
+        </div>
         <details className="details-card">
           <summary>Показать дополнительные формулировки и уточнения</summary>
           <div className="details-card__body wizard-layout">
@@ -1274,16 +1362,32 @@ function MapView({
 
 function SummaryView({ session }: { session: InterviewSession }) {
   const summary = summarizeSession(session);
-  const openJobs = session.jobs.filter((job) => (job.fields.problems ?? []).length > 0);
+  const coreJob = session.jobs.find((job) => job.level === "core") || session.jobs[0];
+  const higherJobs = session.jobs.filter((job) => job.parentId === undefined && job.level === "big");
+  const childJobs = coreJob ? session.jobs.filter((job) => job.parentId === coreJob.id) : [];
+  const jobsWithProblems = session.jobs.filter((job) => (job.fields.problems ?? []).length > 0);
+  const topProblems = jobsWithProblems.flatMap((job) =>
+    (job.fields.problems ?? []).map((problem) => `${problem} (${job.title})`),
+  );
+  const topBarriers = session.jobs.flatMap((job) =>
+    (job.fields.barriers ?? []).map((barrier) => `${barrier} (${job.title})`),
+  );
+  const topAlternatives = session.jobs.flatMap((job) => job.fields.alternatives ?? []);
+  const productImplications = [
+    coreJob?.fields.value ? `Усилить ценность "${coreJob.fields.value}" в интерфейсе и коммуникации.` : undefined,
+    topProblems[0] ? `Снять проблему "${topProblems[0]}" в сценарии продукта.` : undefined,
+    coreJob?.fields.criteria ? `Проверить, закрывает ли продукт критерии результата: ${coreJob.fields.criteria}.` : undefined,
+    coreJob?.fields.higherLevelOutcome ? `Связать решение с работой уровнем выше: ${coreJob.fields.higherLevelOutcome}.` : undefined,
+  ].filter(Boolean) as string[];
 
   return (
     <div className="stack">
       <section className="hero-card">
-        <p className="eyebrow">Итог интервью</p>
+        <p className="eyebrow">Research Summary</p>
         <h3>{session.title}</h3>
         <p>
-          Сессия сохранена локально. Ниже собраны ключевые выводы, карта и главные работы с
-          проблемами.
+          Это не техническая сводка, а короткий исследовательский итог: какую работу выполняет
+          человек, зачем она ему нужна, что мешает и где лежат продуктовые возможности.
         </p>
       </section>
       <section className="summary-grid">
@@ -1306,21 +1410,99 @@ function SummaryView({ session }: { session: InterviewSession }) {
       </section>
       <section className="panel">
         <div className="panel__header">
-          <h3>Главные работы и проблемы</h3>
-          <span>{openJobs.length}</span>
+          <h3>Главный вывод по интервью</h3>
+          <span>{coreJob ? getLevelLabel(coreJob.level) : "нет"}</span>
         </div>
-        <div className="stack">
-          {openJobs.length === 0 ? <p className="muted">Проблемы пока не зафиксированы.</p> : null}
-          {openJobs.map((job) => (
-            <article key={job.id} className="summary-item">
-              <div className="summary-item__top">
-                <strong>{job.title}</strong>
-                <span className="level-pill">{getLevelLabel(job.level)}</span>
-              </div>
-              <p>{job.fields.expectedOutcome || "Нет описания ожидаемого результата"}</p>
-              <p className="muted">{(job.fields.problems ?? []).join(", ") || "Проблемы не заполнены"}</p>
-            </article>
-          ))}
+        <div className="research-grid">
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Главная работа</strong>
+              {coreJob ? <span className="level-pill">{getLevelLabel(coreJob.level)}</span> : null}
+            </div>
+            <p>{coreJob?.fields.expectedOutcome || coreJob?.title || "Не определена"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Зачем это нужно</strong>
+            </div>
+            <p>{coreJob?.fields.higherLevelOutcome || "Работа уровнем выше пока не зафиксирована"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Ценность решения</strong>
+            </div>
+            <p>{coreJob?.fields.value || "Ценность пока не описана"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Контекст и триггер</strong>
+            </div>
+            <p>{[coreJob?.fields.context, coreJob?.fields.trigger].filter(Boolean).join(" • ") || "Пока не собраны"}</p>
+          </article>
+        </div>
+      </section>
+      <section className="panel">
+        <div className="panel__header">
+          <h3>Структура работы</h3>
+          <span>{childJobs.length + higherJobs.length}</span>
+        </div>
+        <div className="research-grid">
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Работы уровнем выше</strong>
+            </div>
+            <p>{higherJobs.length ? higherJobs.map((job) => job.title).join(", ") : "Не выделены отдельно"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Подзадачи и шаги</strong>
+            </div>
+            <p>{childJobs.length ? childJobs.map((job) => job.title).join(", ") : "Пока не декомпозированы"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Критерии хорошего результата</strong>
+            </div>
+            <p>{coreJob?.fields.criteria || "Пока не описаны"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Эмоциональная ставка</strong>
+            </div>
+            <p>{[coreJob?.fields.positiveEmotion, coreJob?.fields.negativeEmotion].filter(Boolean).join(" • ") || "Пока не зафиксирована"}</p>
+          </article>
+        </div>
+      </section>
+      <section className="panel">
+        <div className="panel__header">
+          <h3>Барьеры, проблемы, альтернативы</h3>
+          <span>{topProblems.length}</span>
+        </div>
+        <div className="research-grid">
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Главные проблемы</strong>
+            </div>
+            <p>{topProblems.length ? topProblems.slice(0, 5).join(", ") : "Пока не зафиксированы"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Барьеры к использованию</strong>
+            </div>
+            <p>{topBarriers.length ? topBarriers.slice(0, 5).join(", ") : "Пока не зафиксированы"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Альтернативы</strong>
+            </div>
+            <p>{topAlternatives.length ? topAlternatives.slice(0, 5).join(", ") : "Пока не зафиксированы"}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Что стоит проверить продуктово</strong>
+            </div>
+            <p>{productImplications.length ? productImplications.join(" ") : "Пока недостаточно данных для выводов."}</p>
+          </article>
         </div>
       </section>
     </div>
@@ -1540,6 +1722,20 @@ function AppShell() {
                   {option === "start" ? "Подготовка" : option === "wizard" ? "Интервью" : option === "map" ? "Карта" : "Итог"}
                 </button>
               ))}
+            </div>
+            <div className="mode-toggle" role="group" aria-label="Interview mode">
+              <button
+                className={classNames("tab", !advancedMode && "tab--active")}
+                onClick={() => setAdvancedMode(false)}
+              >
+                Базовый режим
+              </button>
+              <button
+                className={classNames("tab", advancedMode && "tab--active")}
+                onClick={() => setAdvancedMode(true)}
+              >
+                Расширенный режим
+              </button>
             </div>
             {activeSession && advancedMode ? (
               <button className="button" onClick={() => setShowContextPanel((value) => !value)}>
