@@ -30,10 +30,10 @@ import {
   StepStatus,
 } from "./types";
 
-type WorkspaceView = "start" | "wizard" | "map" | "summary";
+type WorkspaceView = "overview" | "start" | "wizard" | "map" | "summary";
 
 const LEVEL_OPTIONS: JobLevel[] = ["big", "core", "small", "sub"];
-const VIEW_OPTIONS: WorkspaceView[] = ["start", "wizard", "map", "summary"];
+const VIEW_OPTIONS: WorkspaceView[] = ["overview", "start", "wizard", "map", "summary"];
 const FIELD_TO_JOB_PATCH: Partial<Record<string, keyof JobFields>> = {
   "job-outcome": "expectedOutcome",
   "job-criteria": "criteria",
@@ -474,6 +474,63 @@ function createResearchReport(session: InterviewSession, allSessions: InterviewS
     patterns.length ? patterns.map((item) => `- ${item.label} (${item.count})`).join("\n") : "Недостаточно данных",
     "",
   ].join("\n");
+}
+
+function incrementCount(map: Map<string, number>, value: string | undefined) {
+  const key = value?.trim();
+  if (!key) return;
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function getResearchRepositoryMetrics(sessions: InterviewSession[]) {
+  const jobCounts = new Map<string, number>();
+  const problemCounts = new Map<string, number>();
+  const barrierCounts = new Map<string, number>();
+  const valueCounts = new Map<string, number>();
+
+  const sessionsWithGaps = sessions
+    .map((session) => ({
+      session,
+      missing: getMissingInterviewZones(session),
+    }))
+    .filter((item) => item.missing.length > 0)
+    .sort((a, b) => b.missing.length - a.missing.length);
+
+  sessions.forEach((session) => {
+    session.jobs.forEach((job) => {
+      incrementCount(jobCounts, job.fields.expectedOutcome || job.title);
+      incrementCount(valueCounts, job.fields.value);
+      (job.fields.problems ?? []).forEach((item) => incrementCount(problemCounts, item));
+      (job.fields.barriers ?? []).forEach((item) => incrementCount(barrierCounts, item));
+    });
+  });
+
+  const toTopList = (map: Map<string, number>, limit = 6) =>
+    Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([label, count]) => ({ label, count }));
+
+  const coverage = {
+    withContext: sessions.filter((session) => getCoreJob(session)?.fields.context).length,
+    withProblems: sessions.filter((session) => (getCoreJob(session)?.fields.problems ?? []).length > 0).length,
+    withValue: sessions.filter((session) => getCoreJob(session)?.fields.value).length,
+    withHigherLevel: sessions.filter((session) => getCoreJob(session)?.fields.higherLevelOutcome).length,
+  };
+
+  return {
+    totalSessions: sessions.length,
+    totalJobs: sessions.reduce((sum, session) => sum + session.jobs.length, 0),
+    recentSessions: [...sessions]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, 6),
+    topJobs: toTopList(jobCounts),
+    topProblems: toTopList(problemCounts),
+    topBarriers: toTopList(barrierCounts),
+    topValues: toTopList(valueCounts),
+    sessionsWithGaps,
+    coverage,
+  };
 }
 
 function applySessionStepNotes(session: InterviewSession, stepId: string, value: string): InterviewSession {
@@ -1483,6 +1540,175 @@ function MapView({
   );
 }
 
+function OverviewView({
+  sessions,
+  onOpenSession,
+  onCreateSession,
+}: {
+  sessions: InterviewSession[];
+  onOpenSession: (sessionId: string, view?: WorkspaceView) => void;
+  onCreateSession: (mode: InterviewMode) => void;
+}) {
+  const metrics = getResearchRepositoryMetrics(sessions);
+
+  return (
+    <div className="stack">
+      <section className="hero-card">
+        <p className="eyebrow">Research Repository</p>
+        <h3>Обзор всех интервью и повторяющихся паттернов</h3>
+        <p>
+          Это рабочий экран для product manager и исследователя: видно, сколько интервью уже собрано,
+          где пробелы в данных и какие jobs, проблемы и ценности повторяются чаще всего.
+        </p>
+        <div className="action-row">
+          <button className="button button--primary" onClick={() => onCreateSession("frequent")}>
+            Новое интервью: частотная работа
+          </button>
+          <button className="button" onClick={() => onCreateSession("sequential")}>
+            Новое интервью: последовательная работа
+          </button>
+        </div>
+      </section>
+
+      <section className="summary-grid">
+        <div className="summary-tile">
+          <strong>{metrics.totalSessions}</strong>
+          <span>интервью в базе</span>
+        </div>
+        <div className="summary-tile">
+          <strong>{metrics.totalJobs}</strong>
+          <span>работ зафиксировано</span>
+        </div>
+        <div className="summary-tile">
+          <strong>{metrics.sessionsWithGaps.length}</strong>
+          <span>сессий с пробелами</span>
+        </div>
+        <div className="summary-tile">
+          <strong>{metrics.topProblems.length}</strong>
+          <span>повторяющихся проблемных паттернов</span>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel__header">
+          <h3>Покрытие исследовательских зон</h3>
+          <span>{metrics.totalSessions}</span>
+        </div>
+        <div className="research-grid">
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Контекст</strong>
+            </div>
+            <p>{metrics.coverage.withContext} из {metrics.totalSessions} интервью</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Проблемы</strong>
+            </div>
+            <p>{metrics.coverage.withProblems} из {metrics.totalSessions} интервью</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Ценность решения</strong>
+            </div>
+            <p>{metrics.coverage.withValue} из {metrics.totalSessions} интервью</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Работа уровнем выше</strong>
+            </div>
+            <p>{metrics.coverage.withHigherLevel} из {metrics.totalSessions} интервью</p>
+          </article>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel__header">
+          <h3>Повторяющиеся паттерны</h3>
+          <span>top signals</span>
+        </div>
+        <div className="research-grid">
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Частые работы</strong>
+            </div>
+            <p>{metrics.topJobs.length ? metrics.topJobs.map((item) => `${item.label} (${item.count})`).join(", ") : "Пока недостаточно данных."}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Частые проблемы</strong>
+            </div>
+            <p>{metrics.topProblems.length ? metrics.topProblems.map((item) => `${item.label} (${item.count})`).join(", ") : "Пока недостаточно данных."}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Частые барьеры</strong>
+            </div>
+            <p>{metrics.topBarriers.length ? metrics.topBarriers.map((item) => `${item.label} (${item.count})`).join(", ") : "Пока недостаточно данных."}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Частая ценность</strong>
+            </div>
+            <p>{metrics.topValues.length ? metrics.topValues.map((item) => `${item.label} (${item.count})`).join(", ") : "Пока недостаточно данных."}</p>
+          </article>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel__header">
+          <h3>Сессии, которые стоит доработать</h3>
+          <span>{metrics.sessionsWithGaps.length}</span>
+        </div>
+        <div className="job-list">
+          {metrics.sessionsWithGaps.length === 0 ? <p className="muted">Критичных пробелов пока нет.</p> : null}
+          {metrics.sessionsWithGaps.map(({ session, missing }) => (
+            <div key={session.id} className="job-list-item">
+              <div>
+                <strong>{session.title}</strong>
+                <p>{missing.slice(0, 2).join(" ")}</p>
+              </div>
+              <div className="action-row">
+                <button className="button" onClick={() => onOpenSession(session.id, "summary")}>
+                  Открыть summary
+                </button>
+                <button className="button" onClick={() => onOpenSession(session.id, "wizard")}>
+                  Доработать интервью
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel__header">
+          <h3>Последние интервью</h3>
+          <span>{metrics.recentSessions.length}</span>
+        </div>
+        <div className="job-list">
+          {metrics.recentSessions.map((session) => (
+            <div key={session.id} className="job-list-item">
+              <div>
+                <strong>{session.title}</strong>
+                <p>{getModeLabel(session.mode)} • обновлено {new Date(session.updatedAt).toLocaleDateString("ru-RU")}</p>
+              </div>
+              <div className="action-row">
+                <button className="button" onClick={() => onOpenSession(session.id, "wizard")}>
+                  Продолжить
+                </button>
+                <button className="button" onClick={() => onOpenSession(session.id, "summary")}>
+                  Открыть итог
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function SummaryView({ session, allSessions }: { session: InterviewSession; allSessions: InterviewSession[] }) {
   const summary = summarizeSession(session);
   const coreJob = getCoreJob(session);
@@ -1743,6 +1969,11 @@ function AppShell() {
     setView("start");
   };
 
+  const openSession = (sessionId: string, nextView: WorkspaceView = "wizard") => {
+    setActiveSessionId(sessionId);
+    setView(nextView);
+  };
+
   const mergeImportedSessions = (incoming: InterviewSession[]) => {
     setSessions((current) => {
       const byId = new Map(current.map((session) => [session.id, session]));
@@ -1912,7 +2143,15 @@ function AppShell() {
                   className={classNames("tab", view === option && "tab--active")}
                   onClick={() => setView(option)}
                 >
-                  {option === "start" ? "Подготовка" : option === "wizard" ? "Интервью" : option === "map" ? "Карта" : "Итог"}
+                  {option === "overview"
+                    ? "Обзор"
+                    : option === "start"
+                      ? "Подготовка"
+                      : option === "wizard"
+                        ? "Интервью"
+                        : option === "map"
+                          ? "Карта"
+                          : "Итог"}
                 </button>
               ))}
             </div>
@@ -1940,7 +2179,9 @@ function AppShell() {
 
         <div className={classNames("workspace__content", showContextPanel && "workspace__content--with-context")}>
           <section className="content-panel">
-            {!activeSession ? (
+            {view === "overview" ? (
+              <OverviewView sessions={sessions} onOpenSession={openSession} onCreateSession={createNewSession} />
+            ) : !activeSession ? (
               <EmptyState onCreate={createNewSession} />
             ) : view === "start" ? (
               <StartView
