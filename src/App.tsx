@@ -76,13 +76,13 @@ function getLevelLabel(level: JobLevel) {
 function getLevelHint(level: JobLevel) {
   switch (level) {
     case "big":
-      return "Работа уровнем выше: зачем вообще нужен текущий результат";
+      return "big job: зачем вообще нужен текущий результат";
     case "core":
-      return "Главная работа, которую сейчас изучаем";
+      return "core job: главная формулировка работы, которую сейчас изучаем";
     case "small":
-      return "Работа ниже уровнем, часть core job";
+      return "small job: часть core job";
     case "sub":
-      return "Совсем конкретный шаг внутри small job";
+      return "sub job: конкретный шаг внутри small job";
   }
 }
 
@@ -259,7 +259,7 @@ function getStepNextAction(stepId: string, session: InterviewSession, selectedJo
     "job-outcome": "Проверьте, что формулировка звучит как результат, а не как функция продукта.",
     "job-criteria": "Уточните, как респондент понимает, что результат получен хорошо.",
     "job-situation": "Проверьте, что вы отделили ситуацию, триггер и новое знание друг от друга.",
-    "job-motivation": "Дойдите до работы уровнем выше и эмоциональной ставки.",
+      "job-motivation": "Дойдите до big job и эмоциональной ставки.",
     "job-economics": "Сопоставьте силу работы и качество текущего решения.",
     "job-solution-detail": "Соберите барьеры, альтернативы и реальные проблемы использования.",
     "previous-next-jobs": "Добавьте соседние работы, чтобы увидеть цепочку целиком.",
@@ -391,7 +391,7 @@ function getMissingInterviewZones(session: InterviewSession) {
     missing.push("Не описан триггер возникновения главной работы.");
   }
   if (!coreJob?.fields.higherLevelOutcome) {
-    missing.push("Не выделена работа уровнем выше.");
+    missing.push("Не выделен big job.");
   }
   if (!(coreJob?.fields.problems ?? []).length) {
     missing.push("Не собраны конкретные проблемы или сбои.");
@@ -440,10 +440,10 @@ function createResearchReport(session: InterviewSession, allSessions: InterviewS
     `Дата обновления: ${new Date(session.updatedAt).toLocaleString("ru-RU")}`,
     `Режим интервью: ${getModeLabel(session.mode)}`,
     "",
-    "## Главная работа",
+    "## core job",
     coreJob?.fields.expectedOutcome || coreJob?.title || "Не определена",
     "",
-    "## Работа уровнем выше",
+    "## big job",
     higherJobs.length ? higherJobs.map((job) => `- ${job.title}`).join("\n") : "Не выделена отдельно",
     "",
     "## Подзадачи",
@@ -1007,7 +1007,7 @@ function WizardView({
                     })
                   }
                 >
-                  Создать работу уровнем выше
+            Создать big job
                 </button>
                 <button
                   className="button"
@@ -1343,7 +1343,7 @@ function StepStructuredEditor({
     return (
       <div className="form-grid">
         <label>
-          Работа уровнем выше
+          big job
           <textarea
             rows={3}
             value={selectedJob.fields.higherLevelOutcome || ""}
@@ -1615,7 +1615,7 @@ function OverviewView({
           </article>
           <article className="summary-item">
             <div className="summary-item__top">
-              <strong>Работа уровнем выше</strong>
+              <strong>big job</strong>
             </div>
             <p>{metrics.coverage.withHigherLevel} из {metrics.totalSessions} интервью</p>
           </article>
@@ -1726,7 +1726,7 @@ function SummaryView({ session, allSessions }: { session: InterviewSession; allS
     coreJob?.fields.value ? `Усилить ценность "${coreJob.fields.value}" в интерфейсе и коммуникации.` : undefined,
     topProblems[0] ? `Снять проблему "${topProblems[0]}" в сценарии продукта.` : undefined,
     coreJob?.fields.criteria ? `Проверить, закрывает ли продукт критерии результата: ${coreJob.fields.criteria}.` : undefined,
-    coreJob?.fields.higherLevelOutcome ? `Связать решение с работой уровнем выше: ${coreJob.fields.higherLevelOutcome}.` : undefined,
+    coreJob?.fields.higherLevelOutcome ? `Связать решение с big job: ${coreJob.fields.higherLevelOutcome}.` : undefined,
   ].filter(Boolean) as string[];
   const missingZones = getMissingInterviewZones(session);
   const repeatedPatterns = getSessionPatterns(allSessions);
@@ -1783,16 +1783,16 @@ function SummaryView({ session, allSessions }: { session: InterviewSession; allS
         <div className="research-grid">
           <article className="summary-item">
             <div className="summary-item__top">
-              <strong>Главная работа</strong>
+              <strong>core job</strong>
               {coreJob ? <span className="level-pill">{getLevelLabel(coreJob.level)}</span> : null}
             </div>
             <p>{coreJob?.fields.expectedOutcome || coreJob?.title || "Не определена"}</p>
           </article>
           <article className="summary-item">
             <div className="summary-item__top">
-              <strong>Зачем это нужно</strong>
+              <strong>big job</strong>
             </div>
-            <p>{coreJob?.fields.higherLevelOutcome || "Работа уровнем выше пока не зафиксирована"}</p>
+            <p>{coreJob?.fields.higherLevelOutcome || "big job пока не зафиксирован"}</p>
           </article>
           <article className="summary-item">
             <div className="summary-item__top">
@@ -1816,7 +1816,7 @@ function SummaryView({ session, allSessions }: { session: InterviewSession; allS
         <div className="research-grid">
           <article className="summary-item">
             <div className="summary-item__top">
-              <strong>Работы уровнем выше</strong>
+              <strong>big jobs</strong>
             </div>
             <p>{higherJobs.length ? higherJobs.map((job) => job.title).join(", ") : "Не выделены отдельно"}</p>
           </article>
@@ -1890,7 +1890,7 @@ function SummaryView({ session, allSessions }: { session: InterviewSession; allS
             </div>
             <p>
               {missingZones.length
-                ? "В следующем разговоре начните с незаполненных зон: контекст, триггер, работа уровнем выше, проблемы и ценность."
+                ? "В следующем разговоре начните с незаполненных зон: контекст, триггер, big job, проблемы и ценность."
                 : "Можно переходить к сравнению нескольких интервью и уточнению повторяющихся паттернов."}
             </p>
           </article>
