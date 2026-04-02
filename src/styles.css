@@ -284,6 +284,20 @@ a {
   padding: 16px;
 }
 
+.wizard-section--full {
+  grid-column: 1 / -1;
+}
+
+.mode-help {
+  display: grid;
+  gap: 10px;
+  text-align: left;
+}
+
+.mode-help p {
+  margin: 0;
+}
+
 .summary-tile {
   background: rgba(255, 251, 245, 0.92);
   border: 1px solid rgba(31, 41, 55, 0.08);

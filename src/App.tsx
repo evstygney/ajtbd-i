@@ -46,6 +46,20 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
+function getModeLabel(mode: InterviewMode) {
+  return mode === "frequent" ? "Частотная работа" : "Последовательная работа";
+}
+
+function getModeShortLabel(mode: InterviewMode) {
+  return mode === "frequent" ? "Частотный сценарий" : "Последовательный сценарий";
+}
+
+function getModeDescription(mode: InterviewMode) {
+  return mode === "frequent"
+    ? "Используйте, если работа повторяется регулярно: заказать продукты, доехать на такси, учить слова."
+    : "Используйте, если работа похожа на проект с шагами: купить квартиру, выбрать авто, пройти релокацию.";
+}
+
 function nextLevel(level: JobLevel): JobLevel {
   const index = LEVEL_OPTIONS.indexOf(level);
   return LEVEL_OPTIONS[Math.min(index + 1, LEVEL_OPTIONS.length - 1)];
@@ -65,6 +79,87 @@ function parseList(value: string) {
 
 function listToText(values?: string[]) {
   return (values ?? []).join("\n");
+}
+
+function withFallback(value: string | undefined, fallback: string) {
+  return value?.trim() ? value.trim() : fallback;
+}
+
+function buildScriptLines(stepId: string, session: InterviewSession, selectedJob?: JobNode) {
+  const solution = withFallback(
+    selectedJob?.fields.solution || session.hypothesisSolution,
+    "решение",
+  );
+  const job = withFallback(selectedJob?.title || session.hypothesisJob, "эту работу");
+  const outcome = withFallback(selectedJob?.fields.expectedOutcome, "этот результат");
+  const higher = withFallback(selectedJob?.fields.higherLevelOutcome, "результат уровнем выше");
+
+  const map: Record<string, string[]> = {
+    onboarding: [
+      `Спасибо, что нашли время. Мы поговорим про то, как вы решаете задачу: ${job}.`,
+      "Я буду задавать много уточняющих вопросов и параллельно вести заметки, чтобы ничего не потерять.",
+      "Если какой-то вопрос покажется странным или неудобным, пожалуйста, сразу скажите.",
+    ],
+    qualification: [
+      "Чтобы лучше понимать ваши ответы, хочу немного уточнить ваш опыт и прошлый контекст.",
+      `Расскажите, пожалуйста, какой у вас опыт в теме, связанной с задачей "${job}"?`,
+      `Какие способы или решения вы уже пробовали до этого?`,
+    ],
+    "navigation-to-jobs": [
+      `Расскажите, пожалуйста, как вы обычно используете ${solution} для задачи "${job}".`,
+      `Какие результаты вы обычно хотите получить от ${solution}?`,
+      "Если результатов несколько, что из этого самое важное, проблемное и частотное?",
+    ],
+    "job-outcome": [
+      `Какой результат вы обычно хотите получить, когда используете ${solution}?`,
+      "Какие задачи за этим стоят?",
+      `Если сформулировать коротко, на какую работу вы нанимаете ${solution}?`,
+    ],
+    "job-criteria": [
+      `По каким критериям вы понимаете, что получили "${outcome}" достаточно хорошо?`,
+      `Что для вас важно в хорошем результате "${outcome}"?`,
+    ],
+    "job-situation": [
+      `Расскажите, пожалуйста, подробнее, в какой ситуации вы решаете использовать ${solution}, чтобы получить "${outcome}"?`,
+      `В какой момент вы обычно начинаете что-то делать, чтобы получить "${outcome}"? Что становится триггером?`,
+      `Что такого вы узнали или после какого опыта захотели получить "${outcome}"?`,
+    ],
+    "job-motivation": [
+      `Зачем вы хотите получить "${outcome}"? Чтобы что?`,
+      `Как вы хотите себя чувствовать после того, как получите "${outcome}"?`,
+      `Пока вы не получаете "${outcome}", какие негативные эмоции вы испытываете?`,
+    ],
+    "job-economics": [
+      `Как часто у вас возникает задача получить "${outcome}"?`,
+      `Насколько для вас важно получить "${outcome}" по шкале от 1 до 10?`,
+      `Насколько ${solution} позволяет получить "${outcome}" так, как вам нужно?`,
+    ],
+    "job-solution-detail": [
+      `В чем ценность ${solution} именно в контексте "${outcome}"?`,
+      `В какой момент вы поняли ценность ${solution}?`,
+      `Были ли проблемы, барьеры или другие альтернативы, когда вы пытались получить "${outcome}"?`,
+    ],
+    "previous-next-jobs": [
+      `Что вы делали до того, как начали использовать ${solution}, чтобы прийти к "${outcome}"?`,
+      `Что вы делали после того, как получили "${outcome}", чтобы прийти к "${higher}"?`,
+    ],
+    "lower-level-jobs": [
+      session.mode === "frequent"
+        ? `Какие работы ниже уровнем вы обычно делаете, чтобы получить "${outcome}"?`
+        : `Расскажите, пожалуйста, по шагам, что вы делаете, чтобы получить "${outcome}".`,
+      "Какие из этих шагов самые важные или проблемные?",
+    ],
+    "solution-interview": [
+      `Какие альтернативы вы рассматривали, чтобы получить "${outcome}"?`,
+      `Почему в итоге выбрали именно ${solution}?`,
+    ],
+    summary: [
+      "Есть ли еще что-то важное, что я не спросил, но это стоит учесть?",
+      `Если коротко, какие 1-2 работы и проблемы здесь самые главные вокруг "${outcome}"?`,
+    ],
+  };
+
+  return map[stepId] ?? [];
 }
 
 function summarizeSession(session: InterviewSession) {
@@ -243,7 +338,7 @@ function JobFlowCard({ job }: { job: JobNode }) {
     <div className="flow-card">
       <div className="flow-card__meta">
         <span className="level-pill">{job.level}</span>
-        <span className="branch-pill">{job.branchType}</span>
+        <span className="branch-pill">{getModeLabel(job.branchType)}</span>
       </div>
       <strong>{job.title}</strong>
       <p>{job.fields.expectedOutcome || "Добавьте формулировку работы"}</p>
@@ -259,12 +354,16 @@ function EmptyState({ onCreate }: { onCreate: (mode: InterviewMode) => void }) {
         Помощник работает полностью в браузере, сохраняет интервью в localStorage и строит граф работ
         без сервера.
       </p>
+      <div className="mode-help">
+        <p><strong>{getModeLabel("frequent")}:</strong> {getModeDescription("frequent")}</p>
+        <p><strong>{getModeLabel("sequential")}:</strong> {getModeDescription("sequential")}</p>
+      </div>
       <div className="action-row">
         <button className="button button--primary" onClick={() => onCreate("frequent")}>
-          Frequent mode
+          {getModeShortLabel("frequent")}
         </button>
         <button className="button" onClick={() => onCreate("sequential")}>
-          Sequential mode
+          {getModeShortLabel("sequential")}
         </button>
       </div>
     </div>
@@ -325,8 +424,8 @@ function StartView({
                 })
               }
             >
-              <option value="frequent">frequent</option>
-              <option value="sequential">sequential</option>
+              <option value="frequent">{getModeLabel("frequent")}</option>
+              <option value="sequential">{getModeLabel("sequential")}</option>
             </select>
           </label>
           <label>
@@ -361,6 +460,7 @@ function StartView({
             Перейти к мастеру
           </button>
         </div>
+        <p className="muted">{getModeDescription(session.mode)}</p>
       </section>
     </div>
   );
@@ -384,6 +484,7 @@ function WizardView({
   const currentIndex = session.steps.findIndex((step) => step.id === activeStep.id);
   const canMoveNext = currentIndex < session.steps.length - 1;
   const canMovePrev = currentIndex > 0;
+  const scriptLines = buildScriptLines(activeStep.id, session, selectedJob);
 
   const moveStep = (direction: "next" | "prev") => {
     onChange((current) => {
@@ -419,14 +520,24 @@ function WizardView({
         <p>{stepTemplate.goal}</p>
         <div className="wizard-layout">
           <div className="wizard-section">
-            <h4>Рекомендуемые вопросы</h4>
+            <h4>Что говорить</h4>
+            <ul className="clean-list">
+              {scriptLines.map((line) => (
+                <li key={line}>
+                  <strong>“{line}”</strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="wizard-section">
+            <h4>Вопросы и ориентиры</h4>
             <ul className="clean-list">
               {stepTemplate.prompts.map((prompt) => (
                 <li key={prompt}>{prompt}</li>
               ))}
             </ul>
           </div>
-          <div className="wizard-section">
+          <div className="wizard-section wizard-section--full">
             <h4>Подсказки интервьюеру</h4>
             <ul className="clean-list">
               {stepTemplate.hints.map((hint) => (
@@ -1036,7 +1147,7 @@ function MapView({
               <div>
                 <strong>{job.title}</strong>
                 <p>
-                  {job.level} / {job.branchType}
+                  {job.level} / {getModeLabel(job.branchType)}
                 </p>
               </div>
               <div className="action-row">
@@ -1230,10 +1341,10 @@ function AppShell() {
           </p>
           <div className="action-row">
             <button className="button button--primary" onClick={() => createNewSession("frequent")}>
-              Новая frequent-сессия
+              Новая сессия: частотная работа
             </button>
             <button className="button" onClick={() => createNewSession("sequential")}>
-              Новая sequential-сессия
+              Новая сессия: последовательная работа
             </button>
           </div>
           <div className="action-row">
@@ -1268,7 +1379,7 @@ function AppShell() {
                 >
                   <div className="session-card__top">
                     <strong>{session.title}</strong>
-                    <span className="branch-pill">{session.mode}</span>
+                    <span className="branch-pill">{getModeLabel(session.mode)}</span>
                   </div>
                   <p>{session.hypothesisJob || session.hypothesisSolution || "Без явной гипотезы"}</p>
                   <small>
@@ -1283,7 +1394,7 @@ function AppShell() {
           <section className="panel">
             <div className="panel__header">
               <h2>Прогресс</h2>
-              <span>{activeSession.mode}</span>
+              <span>{getModeLabel(activeSession.mode)}</span>
             </div>
             <div className="step-list">
               {activeSession.steps.map((step) => (
