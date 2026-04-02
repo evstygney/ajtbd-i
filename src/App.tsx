@@ -353,6 +353,129 @@ function downloadJson(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function downloadText(filename: string, content: string, mimeType = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function getCoreJob(session: InterviewSession) {
+  return session.jobs.find((job) => job.level === "core") || session.jobs[0];
+}
+
+function getMissingInterviewZones(session: InterviewSession) {
+  const coreJob = getCoreJob(session);
+  const missing: string[] = [];
+  const stepMap = new Map(session.steps.map((step) => [step.id, step]));
+
+  if (!session.hypothesisJob && !session.hypothesisSolution) {
+    missing.push("Не указана стартовая гипотеза работы или решения.");
+  }
+  if (!session.qualification.segment && !session.qualification.experienceLevel) {
+    missing.push("Не заполнен квалификационный профиль респондента.");
+  }
+  if (!stepMap.get("navigation-to-jobs")?.notes) {
+    missing.push("Не зафиксирован выбор главной работы после навигации.");
+  }
+  if (!coreJob?.fields.expectedOutcome) {
+    missing.push("У главной работы не сформулирован ожидаемый результат.");
+  }
+  if (!coreJob?.fields.context) {
+    missing.push("Не описан контекст главной работы.");
+  }
+  if (!coreJob?.fields.trigger) {
+    missing.push("Не описан триггер возникновения главной работы.");
+  }
+  if (!coreJob?.fields.higherLevelOutcome) {
+    missing.push("Не выделена работа уровнем выше.");
+  }
+  if (!(coreJob?.fields.problems ?? []).length) {
+    missing.push("Не собраны конкретные проблемы или сбои.");
+  }
+  if (!coreJob?.fields.value) {
+    missing.push("Не зафиксирована ценность текущего решения.");
+  }
+  if (!stepMap.get("summary")?.notes) {
+    missing.push("Не заполнен итоговый вывод интервью.");
+  }
+
+  return missing;
+}
+
+function getSessionPatterns(sessions: InterviewSession[]) {
+  const counts = new Map<string, number>();
+
+  sessions.forEach((session) => {
+    session.jobs.forEach((job) => {
+      [...(job.fields.problems ?? []), ...(job.fields.barriers ?? []), ...(job.fields.alternatives ?? [])]
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => counts.set(item, (counts.get(item) ?? 0) + 1));
+    });
+  });
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([label, count]) => ({ label, count }));
+}
+
+function createResearchReport(session: InterviewSession, allSessions: InterviewSession[]) {
+  const coreJob = getCoreJob(session);
+  const higherJobs = session.jobs.filter((job) => job.parentId === undefined && job.level === "big");
+  const childJobs = coreJob ? session.jobs.filter((job) => job.parentId === coreJob.id) : [];
+  const patterns = getSessionPatterns(allSessions);
+  const missing = getMissingInterviewZones(session);
+  const problems = session.jobs.flatMap((job) => (job.fields.problems ?? []).map((item) => `${item} (${job.title})`));
+  const barriers = session.jobs.flatMap((job) => (job.fields.barriers ?? []).map((item) => `${item} (${job.title})`));
+  const alternatives = session.jobs.flatMap((job) => job.fields.alternatives ?? []);
+
+  return [
+    `# Research Summary: ${session.title}`,
+    "",
+    `Дата обновления: ${new Date(session.updatedAt).toLocaleString("ru-RU")}`,
+    `Режим интервью: ${getModeLabel(session.mode)}`,
+    "",
+    "## Главная работа",
+    coreJob?.fields.expectedOutcome || coreJob?.title || "Не определена",
+    "",
+    "## Работа уровнем выше",
+    higherJobs.length ? higherJobs.map((job) => `- ${job.title}`).join("\n") : "Не выделена отдельно",
+    "",
+    "## Подзадачи",
+    childJobs.length ? childJobs.map((job) => `- ${job.title}`).join("\n") : "Не декомпозированы",
+    "",
+    "## Контекст и триггер",
+    [coreJob?.fields.context, coreJob?.fields.trigger].filter(Boolean).join(" • ") || "Не заполнено",
+    "",
+    "## Критерии результата",
+    coreJob?.fields.criteria || "Не заполнено",
+    "",
+    "## Ценность решения",
+    coreJob?.fields.value || "Не заполнено",
+    "",
+    "## Проблемы",
+    problems.length ? problems.map((item) => `- ${item}`).join("\n") : "Не заполнено",
+    "",
+    "## Барьеры",
+    barriers.length ? barriers.map((item) => `- ${item}`).join("\n") : "Не заполнено",
+    "",
+    "## Альтернативы",
+    alternatives.length ? alternatives.map((item) => `- ${item}`).join("\n") : "Не заполнено",
+    "",
+    "## Пропущенные зоны интервью",
+    missing.length ? missing.map((item) => `- ${item}`).join("\n") : "Критичных пробелов не обнаружено",
+    "",
+    "## Повторяющиеся паттерны по всем сессиям",
+    patterns.length ? patterns.map((item) => `- ${item.label} (${item.count})`).join("\n") : "Недостаточно данных",
+    "",
+  ].join("\n");
+}
+
 function applySessionStepNotes(session: InterviewSession, stepId: string, value: string): InterviewSession {
   const selectedJob = session.jobs.find((job) => job.id === session.selectedJobId);
   const mappedField = FIELD_TO_JOB_PATCH[stepId];
@@ -1360,9 +1483,9 @@ function MapView({
   );
 }
 
-function SummaryView({ session }: { session: InterviewSession }) {
+function SummaryView({ session, allSessions }: { session: InterviewSession; allSessions: InterviewSession[] }) {
   const summary = summarizeSession(session);
-  const coreJob = session.jobs.find((job) => job.level === "core") || session.jobs[0];
+  const coreJob = getCoreJob(session);
   const higherJobs = session.jobs.filter((job) => job.parentId === undefined && job.level === "big");
   const childJobs = coreJob ? session.jobs.filter((job) => job.parentId === coreJob.id) : [];
   const jobsWithProblems = session.jobs.filter((job) => (job.fields.problems ?? []).length > 0);
@@ -1379,6 +1502,10 @@ function SummaryView({ session }: { session: InterviewSession }) {
     coreJob?.fields.criteria ? `Проверить, закрывает ли продукт критерии результата: ${coreJob.fields.criteria}.` : undefined,
     coreJob?.fields.higherLevelOutcome ? `Связать решение с работой уровнем выше: ${coreJob.fields.higherLevelOutcome}.` : undefined,
   ].filter(Boolean) as string[];
+  const missingZones = getMissingInterviewZones(session);
+  const repeatedPatterns = getSessionPatterns(allSessions);
+  const relatedSessions = allSessions.filter((item) => item.id !== session.id);
+  const report = createResearchReport(session, allSessions);
 
   return (
     <div className="stack">
@@ -1389,6 +1516,20 @@ function SummaryView({ session }: { session: InterviewSession }) {
           Это не техническая сводка, а короткий исследовательский итог: какую работу выполняет
           человек, зачем она ему нужна, что мешает и где лежат продуктовые возможности.
         </p>
+        <div className="action-row">
+          <button
+            className="button button--primary"
+            onClick={() =>
+              downloadText(
+                `${session.title.replace(/[\\\\/:*?\"<>|]/g, "_") || "research-summary"}.md`,
+                report,
+                "text/markdown;charset=utf-8",
+              )
+            }
+          >
+            Экспортировать research report
+          </button>
+        </div>
       </section>
       <section className="summary-grid">
         <div className="summary-tile">
@@ -1502,6 +1643,58 @@ function SummaryView({ session }: { session: InterviewSession }) {
               <strong>Что стоит проверить продуктово</strong>
             </div>
             <p>{productImplications.length ? productImplications.join(" ") : "Пока недостаточно данных для выводов."}</p>
+          </article>
+        </div>
+      </section>
+      <section className="panel">
+        <div className="panel__header">
+          <h3>Пропущенные зоны интервью</h3>
+          <span>{missingZones.length}</span>
+        </div>
+        <div className="research-grid">
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Что ещё не собрано</strong>
+            </div>
+            <p>{missingZones.length ? missingZones.join(" ") : "Критичных пробелов не видно."}</p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Что проверить в следующем интервью</strong>
+            </div>
+            <p>
+              {missingZones.length
+                ? "В следующем разговоре начните с незаполненных зон: контекст, триггер, работа уровнем выше, проблемы и ценность."
+                : "Можно переходить к сравнению нескольких интервью и уточнению повторяющихся паттернов."}
+            </p>
+          </article>
+        </div>
+      </section>
+      <section className="panel">
+        <div className="panel__header">
+          <h3>Сравнение с другими интервью</h3>
+          <span>{relatedSessions.length}</span>
+        </div>
+        <div className="research-grid">
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Повторяющиеся паттерны</strong>
+            </div>
+            <p>
+              {repeatedPatterns.length
+                ? repeatedPatterns.map((item) => `${item.label} (${item.count})`).join(", ")
+                : "Пока недостаточно данных для сравнения."}
+            </p>
+          </article>
+          <article className="summary-item">
+            <div className="summary-item__top">
+              <strong>Другие сессии для сопоставления</strong>
+            </div>
+            <p>
+              {relatedSessions.length
+                ? relatedSessions.slice(0, 5).map((item) => item.title).join(", ")
+                : "Это пока единственная сохранённая сессия."}
+            </p>
           </article>
         </div>
       </section>
@@ -1770,7 +1963,7 @@ function AppShell() {
             ) : view === "map" ? (
               <MapView session={activeSession} onChange={updateSession} onDeleteJob={deleteJob} />
             ) : (
-              <SummaryView session={activeSession} />
+              <SummaryView session={activeSession} allSessions={sessions} />
             )}
           </section>
 
